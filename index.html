@@ -4,15 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Мой мессенджер</title>
-  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- React + ReactDOM -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <!-- Firebase SDKs (модульные) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -21,72 +18,50 @@
       projectId: "afhdfh-6428f",
       storageBucket: "afhdfh-6428f.firebasestorage.app",
       messagingSenderId: "557875486879",
-      appId: "1:557875486879:web:dc618eccf500c9a98142aa",
-      measurementId: "G-X9YEE72K1L"
+      appId: "1:557875486879:web:dc618eccf500c9a98142aa"
     };
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // ---------- React компоненты ----------
-    const { useState, useEffect, useRef } = React;
-    const { createRoot } = ReactDOM;
+    const { useState, useEffect, useRef, createContext, useContext } = React;
 
-    // Хук авторизации
     function useAuth() {
       const [user, setUser] = useState(null);
       const [loading, setLoading] = useState(true);
-
       useEffect(() => {
-        const unsub = onAuthStateChanged(auth, (u) => {
-          setUser(u);
-          setLoading(false);
-        });
+        const unsub = onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); });
         return unsub;
       }, []);
-
       return { user, loading };
     }
 
-    // Страница входа / регистрации
-    function AuthPage({ onLogin }) {
+    function AuthPage() {
       const [email, setEmail] = useState("");
       const [password, setPassword] = useState("");
       const [isRegister, setIsRegister] = useState(false);
-
       const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-          if (isRegister) {
-            await createUserWithEmailAndPassword(auth, email, password);
-          } else {
-            await signInWithEmailAndPassword(auth, email, password);
-          }
-        } catch (err) {
-          alert(err.message);
-        }
+          if (isRegister) await createUserWithEmailAndPassword(auth, email, password);
+          else await signInWithEmailAndPassword(auth, email, password);
+        } catch (err) { alert(err.message); }
       };
-
       const googleLogin = async () => {
         const provider = new GoogleAuthProvider();
-        await signInWithPopup(auth, provider);
+        try { await signInWithPopup(auth, provider); } catch (err) { alert(err.message); }
       };
-
       return (
         <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">
           <form onSubmit={handleSubmit} className="bg-gray-800 p-8 rounded-2xl w-96 space-y-4">
-            <h2 className="text-2xl font-bold">{isRegister ? "Регистрация" : "Вход"}</h2>
-            <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 bg-gray-700 rounded-lg" required />
-            <input type="password" placeholder="Пароль" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-gray-700 rounded-lg" required />
-            <button type="submit" className="w-full bg-blue-600 py-3 rounded-lg font-semibold">
-              {isRegister ? "Зарегистрироваться" : "Войти"}
-            </button>
-            <button type="button" onClick={googleLogin} className="w-full bg-white text-black py-3 rounded-lg font-semibold">
-              Войти через Google
-            </button>
+            <h2 className="text-2xl font-bold text-center">{isRegister ? "Регистрация" : "Вход"}</h2>
+            <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 bg-gray-700 rounded-lg outline-none" required />
+            <input type="password" placeholder="Пароль" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-gray-700 rounded-lg outline-none" required />
+            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-semibold transition">{isRegister ? "Зарегистрироваться" : "Войти"}</button>
+            <button type="button" onClick={googleLogin} className="w-full bg-white text-black hover:bg-gray-200 py-3 rounded-lg font-semibold transition">Войти через Google</button>
             <p className="text-center text-sm text-gray-400">
-              <button type="button" onClick={() => setIsRegister(!isRegister)} className="underline">
+              <button type="button" onClick={() => setIsRegister(!isRegister)} className="underline hover:text-white transition">
                 {isRegister ? "Уже есть аккаунт?" : "Нет аккаунта? Зарегистрироваться"}
               </button>
             </p>
@@ -95,250 +70,168 @@
       );
     }
 
-    // Боковая панель (список чатов)
-    function Sidebar({ onSelectChat, currentChatId }) {
+    function Sidebar({ onSelectChat, currentChatId, onNewChat }) {
       const [chats, setChats] = useState([]);
       const { user } = useAuth();
-
       useEffect(() => {
         if (!user) return;
         const q = query(collection(db, "chats"), where("members", "array-contains", user.uid));
-        const unsub = onSnapshot(q, (snap) => {
-          setChats(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
-        return unsub;
+        return onSnapshot(q, (snap) => setChats(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
       }, [user]);
-
+      const handleLogout = () => signOut(auth);
       return (
-        <div className="w-80 bg-gray-800 h-screen overflow-y-auto border-r border-gray-700 flex-shrink-0">
-          <div className="p-4 flex justify-between items-center">
+        <div className="w-80 bg-gray-800 h-screen overflow-y-auto border-r border-gray-700 flex-shrink-0 flex flex-col">
+          <div className="p-4 flex justify-between items-center border-b border-gray-700">
             <h1 className="text-xl font-bold text-white">Мессенджер</h1>
             <div className="flex space-x-2">
-              <button onClick={() => window.switchView("profile")} className="text-blue-400 text-sm">Профиль</button>
+              <button onClick={() => onNewChat("profile")} className="text-blue-400 hover:text-blue-300 text-sm">Профиль</button>
+              <button onClick={handleLogout} className="text-red-400 hover:text-red-300 text-sm">Выйти</button>
             </div>
           </div>
-          <div className="px-4 pb-2 flex space-x-2">
-            <button onClick={() => window.switchView("createGroup")} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">Группа</button>
-            <button onClick={() => window.switchView("createChannel")} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">Канал</button>
+          <div className="p-4 flex space-x-2 border-b border-gray-700">
+            <button onClick={() => onNewChat("createGroup")} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded text-sm transition">+ Группа</button>
+            <button onClick={() => onNewChat("createChannel")} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded text-sm transition">+ Канал</button>
           </div>
-          {chats.map(chat => (
-            <button
-              key={chat.id}
-              onClick={() => { onSelectChat(chat.id); window.switchView("chat"); }}
-              className={`w-full text-left p-4 border-b border-gray-700 flex items-center space-x-3 ${chat.id === currentChatId ? 'bg-gray-700' : 'hover:bg-gray-700'}`}
-            >
-              <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold">
-                {chat.type === "channel" ? "📢" : chat.type === "group" ? "👥" : "💬"}
-              </div>
-              <div>
-                <div className="text-white font-medium">{chat.name || "Чат"}</div>
-                <div className="text-gray-400 text-xs">{chat.type === "channel" ? "Канал" : chat.type === "group" ? "Группа" : "Личный"}</div>
-              </div>
-            </button>
-          ))}
+          <div className="flex-1">
+            {chats.length === 0 && <p className="text-gray-500 text-center mt-8">Нет чатов. Создайте группу или канал!</p>}
+            {chats.map(chat => (
+              <button key={chat.id} onClick={() => onSelectChat(chat.id)} className={`w-full text-left p-4 border-b border-gray-700 flex items-center space-x-3 transition ${chat.id === currentChatId ? 'bg-gray-700' : 'hover:bg-gray-700'}`}>
+                <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-lg">
+                  {chat.type === "channel" ? "📢" : chat.type === "group" ? "👥" : "💬"}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-white font-medium truncate">{chat.name || "Чат"}</div>
+                  <div className="text-gray-400 text-xs">{chat.type === "channel" ? "Канал" : chat.type === "group" ? "Группа" : "Личный"}</div>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       );
     }
 
-    // Окно чата
     function ChatPage({ chatId }) {
       const [messages, setMessages] = useState([]);
       const [text, setText] = useState("");
       const { user } = useAuth();
       const bottomRef = useRef(null);
-
       useEffect(() => {
         if (!chatId) return;
-        const q = query(
-          collection(db, "messages"),
-          where("chatId", "==", chatId),
-          orderBy("timestamp")
-        );
-        const unsub = onSnapshot(q, (snap) => {
-          setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
-        return unsub;
+        const q = query(collection(db, "messages"), where("chatId", "==", chatId), orderBy("timestamp"));
+        return onSnapshot(q, (snap) => setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
       }, [chatId]);
-
-      useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, [messages]);
-
+      useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
       const send = async (e) => {
         e.preventDefault();
         if (!text.trim() || !user) return;
-        await addDoc(collection(db, "messages"), {
-          chatId,
-          senderId: user.uid,
-          text: text.trim(),
-          type: "text",
-          timestamp: serverTimestamp()
-        });
+        await addDoc(collection(db, "messages"), { chatId, senderId: user.uid, text: text.trim(), type: "text", timestamp: serverTimestamp() });
         setText("");
       };
-
-      if (!chatId) {
-        return <div className="flex-1 bg-gray-900 text-white flex items-center justify-center">Выберите чат</div>;
-      }
-
+      if (!chatId) return <div className="flex-1 bg-gray-900 text-white flex items-center justify-center text-gray-500 text-lg">👈 Выберите чат или создайте новый</div>;
       return (
         <div className="flex-1 flex flex-col bg-gray-900 text-white h-screen">
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.senderId === user?.uid ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[75%] px-4 py-2 rounded-2xl ${msg.senderId === user?.uid ? "bg-blue-600" : "bg-gray-700"}`}>
-                  {msg.text}
-                </div>
+                <div className={`max-w-[75%] px-4 py-2 rounded-2xl ${msg.senderId === user?.uid ? "bg-blue-600 rounded-br-md" : "bg-gray-700 rounded-bl-md"}`}>{msg.text}</div>
               </div>
             ))}
             <div ref={bottomRef} />
           </div>
-          <form onSubmit={send} className="p-4 bg-gray-800 flex">
+          <form onSubmit={send} className="p-4 bg-gray-800 flex border-t border-gray-700">
             <input value={text} onChange={e => setText(e.target.value)} className="flex-1 bg-gray-700 rounded-lg px-4 py-2 outline-none" placeholder="Сообщение..." />
-            <button type="submit" className="ml-3 bg-blue-500 hover:bg-blue-600 px-5 rounded-lg">➤</button>
+            <button type="submit" className="ml-3 bg-blue-500 hover:bg-blue-600 px-6 rounded-lg transition">➤</button>
           </form>
         </div>
       );
     }
 
-    // Профиль (base64 аватарка)
     function ProfilePage() {
       const { user } = useAuth();
       const [name, setName] = useState("");
       const [bio, setBio] = useState("");
       const [photoData, setPhotoData] = useState("");
       const fileInputRef = useRef(null);
-
       useEffect(() => {
         if (!user) return;
         (async () => {
           const snap = await getDoc(doc(db, "users", user.uid));
-          if (snap.exists()) {
-            const d = snap.data();
-            setName(d.displayName || "");
-            setBio(d.bio || "");
-            setPhotoData(d.photoData || "");
-          }
+          if (snap.exists()) { const d = snap.data(); setName(d.displayName || ""); setBio(d.bio || ""); setPhotoData(d.photoData || ""); }
         })();
       }, [user]);
-
       const handleFileChange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if (file.size > 1024 * 1024) {
-          alert("Файл слишком большой. Максимум 1 МБ.");
-          return;
-        }
+        if (file.size > 1024 * 1024) { alert("Файл слишком большой. Максимум 1 МБ."); return; }
         const reader = new FileReader();
         reader.onload = () => setPhotoData(reader.result);
         reader.readAsDataURL(file);
       };
-
       const handleSave = async () => {
-        if (!user) return;
-        await setDoc(doc(db, "users", user.uid), {
-          displayName: name,
-          bio,
-          photoData
-        }, { merge: true });
+        await setDoc(doc(db, "users", user.uid), { displayName: name, bio, photoData }, { merge: true });
         alert("Сохранено!");
       };
-
       return (
         <div className="min-h-screen bg-gray-900 text-white p-6 w-full">
           <div className="max-w-md mx-auto">
             <h2 className="text-2xl mb-6">Мой профиль</h2>
             <div className="flex items-center space-x-4 mb-4">
-              {photoData ? (
-                <img src={photoData} className="w-16 h-16 rounded-full object-cover" />
-              ) : (
-                <div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center text-2xl">🙂</div>
-              )}
-              <button onClick={() => fileInputRef.current.click()} className="bg-gray-700 px-4 py-2 rounded hover:bg-gray-600">
-                Загрузить фото
-              </button>
+              {photoData ? <img src={photoData} className="w-16 h-16 rounded-full object-cover" /> : <div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center text-2xl">🙂</div>}
+              <button onClick={() => fileInputRef.current.click()} className="bg-gray-700 px-4 py-2 rounded hover:bg-gray-600 transition">Загрузить фото</button>
               <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleFileChange} />
             </div>
             <input placeholder="Имя" value={name} onChange={e => setName(e.target.value)} className="w-full p-3 bg-gray-700 rounded-lg mb-3 outline-none" />
             <textarea placeholder="О себе" value={bio} onChange={e => setBio(e.target.value)} className="w-full p-3 bg-gray-700 rounded-lg mb-3 outline-none" rows={3} />
-            <button onClick={handleSave} className="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-semibold">Сохранить</button>
-            <button onClick={() => window.switchView("main")} className="w-full mt-4 bg-gray-700 hover:bg-gray-600 py-3 rounded-lg">Назад</button>
+            <button onClick={handleSave} className="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-semibold transition">Сохранить</button>
+            <button onClick={() => window.switchView("main")} className="w-full mt-4 bg-gray-700 hover:bg-gray-600 py-3 rounded-lg transition">← Назад к чатам</button>
           </div>
         </div>
       );
     }
 
-    // Создание группы или канала
     function CreateGroupPage({ isChannel = false }) {
       const [name, setName] = useState("");
-
       const handleCreate = async () => {
         const user = auth.currentUser;
         if (!user || !name.trim()) return;
-        const docRef = await addDoc(collection(db, "chats"), {
-          name: name.trim(),
-          type: isChannel ? "channel" : "group",
-          members: [user.uid],
-          createdBy: user.uid,
-          createdAt: serverTimestamp()
-        });
+        const docRef = await addDoc(collection(db, "chats"), { name: name.trim(), type: isChannel ? "channel" : "group", members: [user.uid], createdBy: user.uid, createdAt: serverTimestamp() });
         window.selectChat(docRef.id);
         window.switchView("chat");
       };
-
       return (
         <div className="min-h-screen bg-gray-900 text-white p-6 w-full">
           <div className="max-w-md mx-auto">
-            <h2 className="text-2xl mb-6">{isChannel ? "Создать канал" : "Создать группу"}</h2>
-            <input placeholder={isChannel ? "Название канала" : "Название группы"} value={name} onChange={e => setName(e.target.value)} className="w-full p-3 bg-gray-700 rounded-lg mb-4" />
-            <button onClick={handleCreate} className="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-semibold">Создать</button>
-            <button onClick={() => window.switchView("main")} className="w-full mt-4 bg-gray-700 hover:bg-gray-600 py-3 rounded-lg">Отмена</button>
+            <h2 className="text-2xl mb-6">{isChannel ? "📢 Создать канал" : "👥 Создать группу"}</h2>
+            <input placeholder={isChannel ? "Название канала" : "Название группы"} value={name} onChange={e => setName(e.target.value)} className="w-full p-3 bg-gray-700 rounded-lg mb-4 outline-none" autoFocus />
+            <button onClick={handleCreate} className="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-semibold transition">Создать</button>
+            <button onClick={() => window.switchView("main")} className="w-full mt-4 bg-gray-700 hover:bg-gray-600 py-3 rounded-lg transition">← Отмена</button>
           </div>
         </div>
       );
     }
 
-    // Главный компонент приложения
     function App() {
       const { user, loading } = useAuth();
       const [currentView, setCurrentView] = useState("main");
       const [selectedChatId, setSelectedChatId] = useState(null);
-
-      // Глобальные функции для переключения видов (используем window для доступа из разных компонентов)
       useEffect(() => {
         window.switchView = (view) => setCurrentView(view);
         window.selectChat = (id) => setSelectedChatId(id);
       }, []);
-
-      if (loading) {
-        return <div className="bg-gray-900 min-h-screen text-white flex items-center justify-center">Загрузка...</div>;
-      }
-
-      if (!user) {
-        return <AuthPage />;
-      }
-
-      // Основной интерфейс мессенджера
-      switch (currentView) {
-        case "profile":
-          return <ProfilePage />;
-        case "createGroup":
-          return <CreateGroupPage isChannel={false} />;
-        case "createChannel":
-          return <CreateGroupPage isChannel={true} />;
-        default:
-          return (
-            <div className="flex h-screen bg-gray-900">
-              <Sidebar onSelectChat={(id) => { setSelectedChatId(id); setCurrentView("chat"); }} currentChatId={selectedChatId} />
-              <ChatPage chatId={selectedChatId} key={selectedChatId} />
-            </div>
-          );
-      }
+      if (loading) return <div className="bg-gray-900 min-h-screen text-white flex items-center justify-center text-xl">Загрузка...</div>;
+      if (!user) return <AuthPage />;
+      if (currentView === "profile") return <ProfilePage />;
+      if (currentView === "createGroup") return <CreateGroupPage isChannel={false} />;
+      if (currentView === "createChannel") return <CreateGroupPage isChannel={true} />;
+      return (
+        <div className="flex h-screen bg-gray-900">
+          <Sidebar onSelectChat={(id) => { setSelectedChatId(id); setCurrentView("chat"); }} currentChatId={selectedChatId} onNewChat={(view) => setCurrentView(view)} />
+          <ChatPage chatId={selectedChatId} key={selectedChatId} />
+        </div>
+      );
     }
 
-    // Монтируем приложение
-    const root = createRoot(document.getElementById("root"));
-    root.render(<App />);
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
   </script>
 </head>
 <body class="bg-gray-900">
