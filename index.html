@@ -5,8 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Мой мессенджер</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+</head>
+<body class="bg-gray-900">
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
@@ -25,7 +29,7 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    const { useState, useEffect, useRef, createContext, useContext } = React;
+    const { useState, useEffect, useRef } = React;
 
     function useAuth() {
       const [user, setUser] = useState(null);
@@ -41,16 +45,22 @@
       const [email, setEmail] = useState("");
       const [password, setPassword] = useState("");
       const [isRegister, setIsRegister] = useState(false);
+      const { user } = useAuth();
+      
+      useEffect(() => { if (user) window.location.reload(); }, [user]);
+      
       const handleSubmit = async (e) => {
         e.preventDefault();
         try {
           if (isRegister) await createUserWithEmailAndPassword(auth, email, password);
           else await signInWithEmailAndPassword(auth, email, password);
-        } catch (err) { alert(err.message); }
+        } catch (err) { alert('Ошибка: ' + err.message); }
       };
       const googleLogin = async () => {
-        const provider = new GoogleAuthProvider();
-        try { await signInWithPopup(auth, provider); } catch (err) { alert(err.message); }
+        try { 
+          const provider = new GoogleAuthProvider();
+          await signInWithPopup(auth, provider); 
+        } catch (err) { alert('Ошибка: ' + err.message); }
       };
       return (
         <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">
@@ -78,7 +88,7 @@
         const q = query(collection(db, "chats"), where("members", "array-contains", user.uid));
         return onSnapshot(q, (snap) => setChats(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
       }, [user]);
-      const handleLogout = () => signOut(auth);
+      const handleLogout = async () => { await signOut(auth); };
       return (
         <div className="w-80 bg-gray-800 h-screen overflow-y-auto border-r border-gray-700 flex-shrink-0 flex flex-col">
           <div className="p-4 flex justify-between items-center border-b border-gray-700">
@@ -162,7 +172,7 @@
       const handleFileChange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if (file.size > 1024 * 1024) { alert("Файл слишком большой. Максимум 1 МБ."); return; }
+        if (file.size > 1024 * 1024) { alert("Максимум 1 МБ"); return; }
         const reader = new FileReader();
         reader.onload = () => setPhotoData(reader.result);
         reader.readAsDataURL(file);
@@ -233,8 +243,5 @@
 
     ReactDOM.createRoot(document.getElementById("root")).render(<App />);
   </script>
-</head>
-<body class="bg-gray-900">
-  <div id="root"></div>
 </body>
 </html>
